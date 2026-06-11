@@ -1,0 +1,55 @@
+{
+    "name": "laravel-solo/live-reload",
+    "description": "A PHP-only live reload tool for Laravel local development.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "live reload",
+        "browser sync",
+        "development",
+        "php"
+    ],
+    "authors": [
+        {
+            "name": "Laravel Solo Live Reload Contributors"
+        }
+    ],
+    "require": {
+        "php": "^7.3|^8.0",
+        "illuminate/console": "^8.0|^9.0|^10.0|^11.0|^12.0",
+        "illuminate/contracts": "^8.0|^9.0|^10.0|^11.0|^12.0",
+        "illuminate/routing": "^8.0|^9.0|^10.0|^11.0|^12.0",
+        "illuminate/support": "^8.0|^9.0|^10.0|^11.0|^12.0",
+        "symfony/process": "^5.4|^6.0|^7.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^6.0|^7.0|^8.0|^9.0|^10.0",
+        "phpunit/phpunit": "^9.5|^10.0|^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "LaravelSolo\\LiveReload\\": "src/"
+        },
+        "files": [
+            "src/Support/Helpers.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "LaravelSolo\\LiveReload\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "LaravelSolo\\LiveReload\\LiveReloadServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

@@ -1,0 +1,10 @@
+/vendor/
+/.phpunit.result.cache
+/.phpunit.cache/
+/.idea/
+/.vscode/
+/.env
+/.env.*
+!/phpunit.xml.dist
+composer.phar
+composer.lock
