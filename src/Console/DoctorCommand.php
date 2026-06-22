@@ -72,10 +72,10 @@ class DoctorCommand extends Command
 
         $checks[] = $this->check(
             'Environment',
-            $this->laravel->environment('production') ? 'fail' : 'pass',
-            $this->laravel->environment('production')
-                ? 'APP_ENV is production, so live reload is disabled.'
-                : 'APP_ENV allows local live reload.'
+            $this->laravel->environment('local') ? 'pass' : 'fail',
+            $this->laravel->environment('local')
+                ? 'APP_ENV=local allows live reload.'
+                : 'Set APP_ENV=local. Live reload is disabled outside local.'
         );
 
         $checks[] = $this->check(
@@ -83,7 +83,7 @@ class DoctorCommand extends Command
             $report['enabled'] ? 'pass' : 'fail',
             $report['enabled']
                 ? 'LIVE_RELOAD_ENABLED allows the package to run.'
-                : 'Set LIVE_RELOAD_ENABLED=true and avoid production environment.'
+                : 'Set LIVE_RELOAD_ENABLED=true and APP_ENV=local.'
         );
 
         $checks[] = $this->check(
@@ -91,10 +91,11 @@ class DoctorCommand extends Command
             $report['injection_enabled'] ? 'pass' : 'warn',
             $report['injection_enabled']
                 ? 'HTML responses can receive the browser client script.'
-                : 'Script injection is disabled or the environment is not local/development/testing.'
+                : 'Script injection is disabled or APP_ENV is not local.'
         );
 
         $checks[] = $this->storageCheck();
+        $checks = array_merge($checks, $this->cacheChecks());
 
         $checks[] = $this->check(
             'Routes',
@@ -148,6 +149,31 @@ class DoctorCommand extends Command
         } catch (RuntimeException $exception) {
             return $this->check('Storage', 'fail', $exception->getMessage());
         }
+    }
+
+    protected function cacheChecks()
+    {
+        $checks = [];
+        $configCache = base_path('bootstrap/cache/config.php');
+        $routeCaches = glob(base_path('bootstrap/cache/routes*.php')) ?: [];
+
+        $checks[] = $this->check(
+            'Config cache',
+            is_file($configCache) ? 'warn' : 'pass',
+            is_file($configCache)
+                ? 'Config cache exists. .env or config/live-reload.php changes may need php artisan optimize:clear.'
+                : 'No config cache file was found.'
+        );
+
+        $checks[] = $this->check(
+            'Route cache',
+            count($routeCaches) > 0 ? 'warn' : 'pass',
+            count($routeCaches) > 0
+                ? 'Route cache exists. Route changes may need php artisan optimize:clear.'
+                : 'No route cache file was found.'
+        );
+
+        return $checks;
     }
 
     protected function check($name, $status, $message)

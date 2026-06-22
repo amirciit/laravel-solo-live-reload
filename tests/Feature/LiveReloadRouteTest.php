@@ -49,12 +49,14 @@ class LiveReloadRouteTest extends TestCase
                 'changed_file',
                 'changed_type',
                 'poll_interval',
+                'reload_delay_ms',
+                'watcher_running',
             ]);
     }
 
-    public function test_version_route_returns_disabled_payload_in_production()
+    public function test_version_route_returns_disabled_payload_outside_local()
     {
-        $this->app['env'] = 'production';
+        $this->app['env'] = 'development';
 
         $this->get('/__live-reload/version')
             ->assertOk()
@@ -63,6 +65,7 @@ class LiveReloadRouteTest extends TestCase
                 'version' => null,
                 'changed_file' => null,
                 'changed_type' => null,
+                'watcher_running' => false,
             ]);
     }
 
@@ -74,10 +77,19 @@ class LiveReloadRouteTest extends TestCase
         $this->assertStringContainsString('application/javascript', $response->headers->get('Content-Type'));
         $this->assertStringContainsString('[LiveReload] Connected', $response->getContent());
         $this->assertStringContainsString('reloadStylesheets', $response->getContent());
+        $this->assertStringContainsString('Live Reload watcher stopped', $response->getContent());
+        $this->assertStringContainsString('reloadDelay', $response->getContent());
         $this->assertStringContainsString('BroadcastChannel', $response->getContent());
         $this->assertStringContainsString('Notification', $response->getContent());
         $this->assertStringContainsString('data-live-reload-overlay', $response->getContent());
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+    }
+
+    public function test_client_script_route_is_not_served_outside_local()
+    {
+        $this->app['env'] = 'production';
+
+        $this->get('/__live-reload/client.js')->assertNotFound();
     }
 
     public function test_status_route_returns_json_report()
@@ -97,6 +109,9 @@ class LiveReloadRouteTest extends TestCase
                 'watch_paths',
                 'watch_extensions',
                 'ignore_paths',
+                'last_changes',
+                'reload_delay_ms',
+                'inject_on_error_pages',
                 'desktop_notifications',
             ]);
     }
@@ -110,6 +125,13 @@ class LiveReloadRouteTest extends TestCase
         $this->assertStringContainsString('Laravel Solo Live Reload Status', $response->getContent());
     }
 
+    public function test_status_route_is_not_served_outside_local()
+    {
+        $this->app['env'] = 'production';
+
+        $this->get('/__live-reload/status')->assertNotFound();
+    }
+
     public function test_status_command_works()
     {
         $this->artisan('live-reload:status')
@@ -121,6 +143,13 @@ class LiveReloadRouteTest extends TestCase
     {
         $this->artisan('live-reload:doctor')
             ->expectsOutput('Laravel Solo Live Reload doctor')
+            ->assertExitCode(0);
+    }
+
+    public function test_self_test_command_works()
+    {
+        $this->artisan('live-reload:test')
+            ->expectsOutput('Laravel Solo Live Reload self-test')
             ->assertExitCode(0);
     }
 

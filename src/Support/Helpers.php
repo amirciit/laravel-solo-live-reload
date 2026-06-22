@@ -11,7 +11,7 @@ if (! function_exists('live_reload_enabled')) {
             return false;
         }
 
-        return ! $app->environment('production');
+        return $app->environment('local');
     }
 }
 
@@ -28,7 +28,7 @@ if (! function_exists('live_reload_injection_enabled')) {
             return false;
         }
 
-        return $app->environment(['local', 'development', 'testing']);
+        return $app->environment('local');
     }
 }
 

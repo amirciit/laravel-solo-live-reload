@@ -34,9 +34,11 @@ class StatusCommand extends Command
             ['Poll interval', $report['poll_interval'] . ' ms'],
             ['Scan interval', $report['scan_interval'] . ' ms'],
             ['Debounce', $report['debounce_ms'] . ' ms'],
+            ['Reload delay', $report['reload_delay_ms'] . ' ms'],
             ['Route prefix', $report['route_prefix']],
             ['Signal file', $report['signal_file']],
             ['CSS hot reload', $report['css_hot_reload'] ? 'yes' : 'no'],
+            ['Error page injection', $report['inject_on_error_pages'] ? 'yes' : 'no'],
             ['Overlay', $report['overlay_enabled'] ? 'yes' : 'no'],
             ['Multi-tab sync', $report['multi_tab_sync'] ? 'yes' : 'no'],
             ['Last version', $report['last_version']],
@@ -55,6 +57,16 @@ class StatusCommand extends Command
         $this->line('Ignored paths:');
         foreach ($report['ignore_paths'] as $path) {
             $this->line(' - ' . $path);
+        }
+
+        $this->line('Recent changes:');
+
+        if (count($report['last_changes']) === 0) {
+            $this->line(' - none');
+        } else {
+            foreach ($report['last_changes'] as $change) {
+                $this->line(' - ' . ($change['changed_type'] ?: 'unknown') . ': ' . ($change['changed_file'] ?: 'none') . ' at ' . ($change['changed_at'] ?: 'never'));
+            }
         }
 
         return self::SUCCESS;

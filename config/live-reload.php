@@ -11,6 +11,12 @@ return [
 
     'debounce_ms' => (int) env('LIVE_RELOAD_DEBOUNCE_MS', 300),
 
+    'reload_delay_ms' => (int) env('LIVE_RELOAD_RELOAD_DELAY_MS', 80),
+
+    'inject_on_error_pages' => env('LIVE_RELOAD_INJECT_ON_ERROR_PAGES', true),
+
+    'status_history_limit' => (int) env('LIVE_RELOAD_STATUS_HISTORY_LIMIT', 10),
+
     'watch_paths' => [
         app_path(),
         base_path('routes'),

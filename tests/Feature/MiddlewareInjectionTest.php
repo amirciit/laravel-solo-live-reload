@@ -37,6 +37,12 @@ class MiddlewareInjectionTest extends TestCase
             ]);
         });
 
+        Route::middleware(InjectLiveReloadScript::class)->get('/html-error-response', function () {
+            return response('<!doctype html><html><body><h1>Server Error</h1></body></html>', 500, [
+                'Content-Type' => 'text/html; charset=UTF-8',
+            ]);
+        });
+
         Route::middleware(InjectLiveReloadScript::class)->get('/json-response', function () {
             return response()->json(['ok' => true]);
         });
@@ -65,6 +71,23 @@ class MiddlewareInjectionTest extends TestCase
         $this->assertStringContainsString('data-live-reload', $content);
     }
 
+    public function test_middleware_injects_script_into_html_error_responses()
+    {
+        $content = $this->get('/html-error-response')->getContent();
+
+        $this->assertStringContainsString('data-live-reload', $content);
+        $this->assertStringContainsString('/__live-reload/client.js', $content);
+    }
+
+    public function test_middleware_can_skip_html_error_responses()
+    {
+        $this->app['config']->set('live-reload.inject_on_error_pages', false);
+
+        $content = $this->get('/html-error-response')->getContent();
+
+        $this->assertStringNotContainsString('data-live-reload', $content);
+    }
+
     public function test_middleware_does_not_inject_into_json()
     {
         $content = $this->get('/json-response')->getContent();
@@ -83,6 +106,15 @@ class MiddlewareInjectionTest extends TestCase
     public function test_middleware_does_not_run_in_production()
     {
         $this->app['env'] = 'production';
+
+        $content = $this->get('/html-response')->getContent();
+
+        $this->assertStringNotContainsString('data-live-reload', $content);
+    }
+
+    public function test_middleware_only_runs_in_local_environment()
+    {
+        $this->app['env'] = 'development';
 
         $content = $this->get('/html-response')->getContent();
 

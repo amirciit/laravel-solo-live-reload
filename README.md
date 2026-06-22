@@ -17,16 +17,20 @@ This package is designed for simple Laravel development workflows:
 - No BrowserSync required
 - Works with `php artisan serve`
 - Safe for local development only
+- Runs only when `APP_ENV=local`
 
 ## Features
 
 - Auto browser reload on watched file changes
 - CSS-only hot reload for `.css` files
 - Browser overlay for connection and reload status
+- Watcher health warning in the browser when the watcher stops
 - Multi-tab sync using `BroadcastChannel` with `localStorage` fallback
 - Optional browser desktop notifications
 - Local status dashboard
+- Recent change history in status output
 - Setup diagnostics with `live-reload:doctor`
+- Pipeline self-test with `live-reload:test`
 - Package summary with `live-reload:about`
 - Optional browser auto-open with `--open`
 - Clean terminal output by default
@@ -154,6 +158,7 @@ Checks common setup problems:
 - Watchable files
 - Watcher process
 - CSS hot reload
+- Laravel config and route cache warnings
 
 JSON output:
 
@@ -168,6 +173,20 @@ php artisan live-reload:about
 ```
 
 Shows package name, environment, enabled state, preset, route prefix, status URL, config path, and storage path.
+
+### Self-Test
+
+```bash
+php artisan live-reload:test
+```
+
+Checks the local environment gate, storage writability, route registration, reload signal write/read, and recent change history.
+
+JSON output:
+
+```bash
+php artisan live-reload:test --json
+```
 
 ### Clear Temporary Files
 
@@ -213,6 +232,9 @@ LIVE_RELOAD_PRESET=laravel
 LIVE_RELOAD_POLL_INTERVAL=800
 LIVE_RELOAD_SCAN_INTERVAL=500
 LIVE_RELOAD_DEBOUNCE_MS=300
+LIVE_RELOAD_RELOAD_DELAY_MS=80
+LIVE_RELOAD_INJECT_ON_ERROR_PAGES=true
+LIVE_RELOAD_STATUS_HISTORY_LIMIT=10
 LIVE_RELOAD_SHOW_SERVER_LOGS=false
 LIVE_RELOAD_CSS_HOT_RELOAD=true
 LIVE_RELOAD_MULTI_TAB_SYNC=true
@@ -281,7 +303,8 @@ Available presets:
 2. It stores a snapshot of file modification times and sizes.
 3. When a file is created, updated, or deleted, it writes a reload signal.
 4. The browser client polls `/__live-reload/version`.
-5. When the version changes, the browser reloads.
+5. The browser warns if the watcher process stops.
+6. When the version changes, the browser reloads.
 
 Reload signal example:
 
@@ -293,6 +316,8 @@ Reload signal example:
   "changed_at": "2026-06-11 12:30:00"
 }
 ```
+
+Runtime files are written under `storage/framework/live-reload`. The package creates a `.gitignore` inside that directory so `reload.json`, `history.json`, and `watcher.pid` are not committed or deployed.
 
 Injected browser client:
 
@@ -326,14 +351,15 @@ The browser may ask for notification permission.
 
 This package is intended for local development only.
 
-- Disabled in `production`
-- Injection only runs in `local`, `development`, or `testing`
+- Disabled unless `APP_ENV=local`
+- Injection only runs when `APP_ENV=local`
 - JSON responses are not modified
 - API paths are not modified
 - File downloads are not modified
 - Binary and streamed responses are not modified
 - Browser responses expose only relative changed file paths
 - Absolute server paths and sensitive config values are not exposed
+- Runtime state files are written to a git-ignored storage directory
 
 ## Troubleshooting
 
@@ -347,7 +373,7 @@ php artisan live-reload:doctor
 
 Then check:
 
-- `APP_ENV` is `local` or `development`
+- `APP_ENV` is exactly `local`
 - `LIVE_RELOAD_ENABLED` is not `false`
 - The page is opened from the same URL printed by `live-reload:serve`
 - The watcher is running
@@ -416,8 +442,8 @@ It runs the package test suite across supported PHP and Laravel versions.
 Use semantic version tags:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 Composer and Packagist will use Git tags as package versions.

@@ -11,6 +11,7 @@ use LaravelSolo\LiveReload\Console\DoctorCommand;
 use LaravelSolo\LiveReload\Console\InstallCommand;
 use LaravelSolo\LiveReload\Console\ServeCommand;
 use LaravelSolo\LiveReload\Console\StatusCommand;
+use LaravelSolo\LiveReload\Console\TestCommand;
 use LaravelSolo\LiveReload\Console\WatchCommand;
 use LaravelSolo\LiveReload\Http\Middleware\InjectLiveReloadScript;
 use LaravelSolo\LiveReload\Services\ConfigResolver;
@@ -58,6 +59,7 @@ class LiveReloadServiceProvider extends ServiceProvider
                 ClearCommand::class,
                 DoctorCommand::class,
                 AboutCommand::class,
+                TestCommand::class,
             ]);
         }
 

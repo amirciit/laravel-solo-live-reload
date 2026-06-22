@@ -9,7 +9,7 @@ use LaravelSolo\LiveReload\Services\ReloadSignal;
 
 class LiveReloadController extends Controller
 {
-    public function version(ReloadSignal $signal)
+    public function version(ReloadSignal $signal, LiveReloadStatus $status)
     {
         if (! live_reload_enabled(app())) {
             return response()->json([
@@ -17,6 +17,7 @@ class LiveReloadController extends Controller
                 'version' => null,
                 'changed_file' => null,
                 'changed_type' => null,
+                'watcher_running' => false,
             ]);
         }
 
@@ -28,15 +29,22 @@ class LiveReloadController extends Controller
             'changed_file' => $payload['changed_file'],
             'changed_type' => $payload['changed_type'],
             'poll_interval' => (int) config('live-reload.poll_interval', 800),
+            'reload_delay_ms' => (int) config('live-reload.reload_delay_ms', 80),
+            'watcher_running' => $status->watcherIsRunning(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 
     public function client()
     {
+        if (! live_reload_enabled(app())) {
+            abort(404);
+        }
+
         $enabled = live_reload_enabled(app());
         $prefix = trim((string) config('live-reload.route_prefix', '__live-reload'), '/');
         $endpoint = url('/' . $prefix . '/version');
         $interval = max(500, (int) config('live-reload.poll_interval', 800));
+        $reloadDelay = max(0, (int) config('live-reload.reload_delay_ms', 80));
         $logs = (bool) config('live-reload.show_console_logs', true);
         $cssHotReload = (bool) config('live-reload.css_hot_reload', true);
         $multiTabSync = (bool) config('live-reload.multi_tab_sync', true);
@@ -49,6 +57,7 @@ class LiveReloadController extends Controller
             $enabled,
             $endpoint,
             $interval,
+            $reloadDelay,
             $logs,
             $cssHotReload,
             $multiTabSync,
@@ -66,6 +75,10 @@ class LiveReloadController extends Controller
 
     public function status(Request $request, LiveReloadStatus $status)
     {
+        if (! live_reload_enabled(app())) {
+            abort(404);
+        }
+
         $report = $status->report(app());
 
         if ($request->expectsJson() || $request->query('format') === 'json') {
@@ -93,6 +106,8 @@ class LiveReloadController extends Controller
             'Overlay' => $report['overlay_enabled'] ? 'yes' : 'no',
             'Multi-tab sync' => $report['multi_tab_sync'] ? 'yes' : 'no',
             'Desktop notifications' => $report['desktop_notifications'] ? 'yes' : 'no',
+            'Reload delay' => $report['reload_delay_ms'] . ' ms',
+            'Error page injection' => $report['inject_on_error_pages'] ? 'yes' : 'no',
         ];
 
         $html = '<!doctype html><html><head><meta charset="utf-8"><title>Laravel Solo Live Reload Status</title>';
@@ -116,12 +131,24 @@ class LiveReloadController extends Controller
             $html .= '<li><code>' . e($path) . '</code></li>';
         }
 
-        $html .= '</ul></section></div></main></body></html>';
+        $html .= '</ul></section></div>';
+
+        $html .= '<section><h2>Recent changes</h2><table><thead><tr><th>File</th><th>Type</th><th>Changed at</th></tr></thead><tbody>';
+
+        if (count($report['last_changes']) === 0) {
+            $html .= '<tr><td colspan="3">No changes recorded.</td></tr>';
+        } else {
+            foreach ($report['last_changes'] as $change) {
+                $html .= '<tr><td><code>' . e($change['changed_file'] ?: 'none') . '</code></td><td>' . e($change['changed_type'] ?: 'unknown') . '</td><td>' . e($change['changed_at'] ?: 'never') . '</td></tr>';
+            }
+        }
+
+        $html .= '</tbody></table></section></main></body></html>';
 
         return $html;
     }
 
-    protected function clientScript($enabled, $endpoint, $interval, $logs, $cssHotReload, $multiTabSync, $desktopNotifications, $overlayEnabled, $overlayPosition, $overlayDuration)
+    protected function clientScript($enabled, $endpoint, $interval, $reloadDelay, $logs, $cssHotReload, $multiTabSync, $desktopNotifications, $overlayEnabled, $overlayPosition, $overlayDuration)
     {
         $enabledJson = $enabled ? 'true' : 'false';
         $endpointJson = json_encode($endpoint);
@@ -139,6 +166,7 @@ class LiveReloadController extends Controller
     var enabled = {$enabledJson};
     var endpoint = {$endpointJson};
     var interval = {$interval};
+    var reloadDelay = {$reloadDelay};
     var showLogs = {$logsJson};
     var cssHotReload = {$cssHotReloadJson};
     var multiTabSync = {$multiTabSyncJson};
@@ -153,6 +181,7 @@ class LiveReloadController extends Controller
     var overlay = null;
     var overlayTimer = null;
     var storageKey = '__laravel_solo_live_reload__';
+    var lastWatcherRunning = null;
 
     function log() {
         if (showLogs && window.console && console.log) {
@@ -302,6 +331,7 @@ class LiveReloadController extends Controller
         }
 
         currentVersion = data.version;
+        var reason = changeReason(data);
 
         if (source !== 'sync') {
             broadcastChange(data);
@@ -311,21 +341,59 @@ class LiveReloadController extends Controller
             var count = reloadStylesheets(data.version);
 
             if (count > 0) {
-                log('[LiveReload] CSS updated:', data.changed_file);
-                showOverlay('CSS updated: ' + data.changed_file, 'ok');
-                notify('CSS updated: ' + data.changed_file);
+                log('[LiveReload] CSS updated:', reason);
+                showOverlay('CSS updated: ' + reason, 'ok');
+                notify('CSS updated: ' + reason);
                 return;
             }
         }
 
-        log('[LiveReload] Change detected:', data.changed_file || 'unknown');
+        log('[LiveReload] Change detected:', reason);
         log('[LiveReload] Reloading...');
-        showOverlay('Reloading: ' + (data.changed_file || 'change detected'), 'reload');
-        notify('Reloading: ' + (data.changed_file || 'change detected'));
+        showOverlay('Reloading: ' + reason, 'reload');
+        notify('Reloading: ' + reason);
 
         window.setTimeout(function () {
             window.location.reload();
-        }, 80);
+        }, reloadDelay);
+    }
+
+    function changeReason(data) {
+        var file = data && data.changed_file ? data.changed_file : 'change detected';
+        var type = data && data.changed_type ? data.changed_type : '';
+
+        return type ? type + ' ' + file : file;
+    }
+
+    function handleWatcherState(running) {
+        if (typeof running !== 'boolean') {
+            return;
+        }
+
+        if (lastWatcherRunning === null) {
+            lastWatcherRunning = running;
+
+            if (!running) {
+                log('[LiveReload] Watcher stopped');
+                showOverlay('Live Reload watcher stopped', 'warn');
+            }
+
+            return;
+        }
+
+        if (lastWatcherRunning === running) {
+            return;
+        }
+
+        lastWatcherRunning = running;
+
+        if (running) {
+            log('[LiveReload] Watcher reconnected');
+            showOverlay('Live Reload watcher reconnected', 'ok');
+        } else {
+            log('[LiveReload] Watcher stopped');
+            showOverlay('Live Reload watcher stopped', 'warn');
+        }
     }
 
     function setupTabSync() {
@@ -389,10 +457,14 @@ class LiveReloadController extends Controller
                 return;
             }
 
+            handleWatcherState(data.watcher_running);
+
             if (currentVersion === null) {
                 currentVersion = data.version;
                 log('[LiveReload] Connected');
-                showOverlay('Live Reload connected', 'ok');
+                if (data.watcher_running !== false) {
+                    showOverlay('Live Reload connected', 'ok');
+                }
                 return;
             }
 

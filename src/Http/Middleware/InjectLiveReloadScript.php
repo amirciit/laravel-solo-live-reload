@@ -66,7 +66,15 @@ class InjectLiveReloadScript
             return false;
         }
 
-        return $response->isSuccessful();
+        if ($response->isRedirection() || $response->isEmpty()) {
+            return false;
+        }
+
+        if (! $response->isSuccessful() && ! (bool) config('live-reload.inject_on_error_pages', true)) {
+            return false;
+        }
+
+        return true;
     }
 
     protected function scriptTag()
