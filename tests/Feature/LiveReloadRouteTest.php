@@ -77,7 +77,7 @@ class LiveReloadRouteTest extends TestCase
         $this->assertStringContainsString('application/javascript', $response->headers->get('Content-Type'));
         $this->assertStringContainsString('[LiveReload] Connected', $response->getContent());
         $this->assertStringContainsString('reloadStylesheets', $response->getContent());
-        $this->assertStringContainsString('Live Reload watcher stopped', $response->getContent());
+        $this->assertStringContainsString('Live Reload watcher issue', $response->getContent());
         $this->assertStringContainsString('reloadDelay', $response->getContent());
         $this->assertStringContainsString('BroadcastChannel', $response->getContent());
         $this->assertStringContainsString('Notification', $response->getContent());

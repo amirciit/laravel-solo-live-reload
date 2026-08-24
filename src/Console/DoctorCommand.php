@@ -4,6 +4,7 @@ namespace LaravelSolo\LiveReload\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Route;
+use LaravelSolo\LiveReload\Services\ConfigResolver;
 use LaravelSolo\LiveReload\Services\LiveReloadStatus;
 use LaravelSolo\LiveReload\Services\ReloadSignal;
 use RuntimeException;

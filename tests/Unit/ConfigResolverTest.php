@@ -3,7 +3,7 @@
 namespace LaravelSolo\LiveReload\Tests\Unit;
 
 use LaravelSolo\LiveReload\Services\ConfigResolver;
-use PHPUnit\Framework\TestCase;
+use Orchestra\Testbench\TestCase;
 
 class ConfigResolverTest extends TestCase
 {
