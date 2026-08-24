@@ -9,7 +9,7 @@ use LaravelSolo\LiveReload\Services\ReloadSignal;
 
 class LiveReloadController extends Controller
 {
-    public function version(ReloadSignal $signal, LiveReloadStatus $status)
+    public function version(Request $request, ReloadSignal $signal, LiveReloadStatus $status)
     {
         if (! live_reload_enabled(app())) {
             return response()->json([
@@ -21,6 +21,10 @@ class LiveReloadController extends Controller
             ]);
         }
 
+        if (! live_reload_request_is_allowed($request)) {
+            abort(404);
+        }
+
         $payload = $signal->read();
 
         return response()->json([
@@ -30,19 +34,23 @@ class LiveReloadController extends Controller
             'changed_type' => $payload['changed_type'],
             'poll_interval' => (int) config('live-reload.poll_interval', 800),
             'reload_delay_ms' => (int) config('live-reload.reload_delay_ms', 80),
-            'watcher_running' => $status->watcherIsRunning(),
+            'watcher_running' => $signal->isWatcherProcessRunning(),
+            'watcher_heartbeat' => $signal->readHeartbeat(),
+            'watcher_heartbeat_age_seconds' => $signal->heartbeatAgeSeconds(),
+            'watcher_heartbeat_stale' => $signal->isHeartbeatStale(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 
-    public function client()
+    public function client(Request $request)
     {
-        if (! live_reload_enabled(app())) {
+        if (! live_reload_enabled(app()) || ! live_reload_request_is_allowed($request)) {
             abort(404);
         }
 
         $enabled = live_reload_enabled(app());
-        $prefix = trim((string) config('live-reload.route_prefix', '__live-reload'), '/');
+        $prefix = live_reload_effective_route_prefix();
         $endpoint = url('/' . $prefix . '/version');
+        $endpoint .= live_reload_client_token_query();
         $interval = max(500, (int) config('live-reload.poll_interval', 800));
         $reloadDelay = max(0, (int) config('live-reload.reload_delay_ms', 80));
         $logs = (bool) config('live-reload.show_console_logs', true);
@@ -76,6 +84,10 @@ class LiveReloadController extends Controller
     public function status(Request $request, LiveReloadStatus $status)
     {
         if (! live_reload_enabled(app())) {
+            abort(404);
+        }
+
+        if (! live_reload_request_is_allowed($request)) {
             abort(404);
         }
 
@@ -176,12 +188,19 @@ class LiveReloadController extends Controller
     var overlayDuration = {$overlayDuration};
     var currentVersion = null;
     var connectionWarned = false;
+    var watcherHeartbeatAge = null;
     var tabId = String(Date.now()) + '-' + Math.random().toString(16).slice(2);
     var channel = null;
     var overlay = null;
     var overlayTimer = null;
     var storageKey = '__laravel_solo_live_reload__';
     var lastWatcherRunning = null;
+    var lastWatcherHealthy = null;
+    var pollDelay = interval;
+    var minPollDelay = Math.max(500, interval);
+    var maxPollDelay = 10000;
+    var reconnectAttempt = 0;
+    var scheduler = null;
 
     function log() {
         if (showLogs && window.console && console.log) {
@@ -370,30 +389,62 @@ class LiveReloadController extends Controller
             return;
         }
 
-        if (lastWatcherRunning === null) {
-            lastWatcherRunning = running;
+        var healthy = !(!running) && watcherHeartbeatAge !== null && watcherHeartbeatAge <= maxPollDelay / 1000;
 
-            if (!running) {
-                log('[LiveReload] Watcher stopped');
-                showOverlay('Live Reload watcher stopped', 'warn');
+        if (lastWatcherHealthy === null) {
+            if (!healthy) {
+                log('[LiveReload] Watcher heartbeat stale or stopped');
+                showOverlay('Live Reload watcher issue: ' + describeHeartbeat(watcherHeartbeatAge), 'warn');
             }
+
+            if (running) {
+                lastWatcherHealthy = true;
+            }
+
+            lastWatcherRunning = running;
 
             return;
         }
 
-        if (lastWatcherRunning === running) {
+        if (lastWatcherRunning === running && lastWatcherHealthy === healthy) {
             return;
         }
 
         lastWatcherRunning = running;
+        lastWatcherHealthy = healthy;
 
-        if (running) {
-            log('[LiveReload] Watcher reconnected');
-            showOverlay('Live Reload watcher reconnected', 'ok');
-        } else {
-            log('[LiveReload] Watcher stopped');
-            showOverlay('Live Reload watcher stopped', 'warn');
+        if (!running || !healthy) {
+            showOverlay('Live Reload watcher issue', 'warn');
+            return;
         }
+
+        showOverlay('Live Reload watcher reconnected', 'ok');
+    }
+
+    function setPollDelay(success) {
+        if (success) {
+            pollDelay = minPollDelay;
+            reconnectAttempt = 0;
+            connectionWarned = false;
+            return;
+        }
+
+        reconnectAttempt = Math.max(1, reconnectAttempt + 1);
+        pollDelay = Math.min(maxPollDelay, minPollDelay * Math.pow(2, reconnectAttempt - 1));
+    }
+
+    function describeHeartbeat(age) {
+        if (age === null || age === undefined) {
+            return 'unknown heartbeat';
+        }
+
+        return age + 's since last watcher heartbeat';
+    }
+
+    function scheduleNextPoll() {
+        scheduler = window.setTimeout(function () {
+            checkReload();
+        }, pollDelay);
     }
 
     function setupTabSync() {
@@ -438,6 +489,11 @@ class LiveReloadController extends Controller
         }
 
         try {
+            if (scheduler) {
+                window.clearTimeout(scheduler);
+                scheduler = null;
+            }
+
             var response = await fetch(endpoint, {
                 cache: 'no-store',
                 headers: {
@@ -447,13 +503,20 @@ class LiveReloadController extends Controller
 
             if (!response.ok) {
                 warn();
+                setPollDelay(false);
+                showOverlay('Live Reload endpoint returned ' + response.status + '. Retrying in ' + pollDelay + 'ms.', 'warn');
+                scheduleNextPoll();
                 return;
             }
 
             var data = await response.json();
             connectionWarned = false;
+            setPollDelay(true);
+            watcherHeartbeatAge = data.watcher_heartbeat_age_seconds;
 
             if (!data.enabled) {
+                showOverlay('Live Reload disabled', 'warn');
+                scheduleNextPoll();
                 return;
             }
 
@@ -465,19 +528,29 @@ class LiveReloadController extends Controller
                 if (data.watcher_running !== false) {
                     showOverlay('Live Reload connected', 'ok');
                 }
+
+                if (data.watcher_heartbeat_stale) {
+                    showOverlay('Watcher heartbeat stale (' + describeHeartbeat(watcherHeartbeatAge) + ')', 'warn');
+                }
+
+                scheduleNextPoll();
                 return;
             }
 
             handleChange(data, 'poll');
         } catch (error) {
             warn();
-            showOverlay('Live Reload disconnected', 'warn');
+            setPollDelay(false);
+            showOverlay('Live Reload disconnected (retry in ' + pollDelay + 'ms): ' + error.message, 'warn');
+            notify('Live Reload disconnected: ' + error.message);
         }
+
+        scheduleNextPoll();
     }
 
     setupTabSync();
     checkReload();
-    window.setInterval(checkReload, interval);
+    // keep polling from the self-adapting loop below
 })();
 JS;
     }

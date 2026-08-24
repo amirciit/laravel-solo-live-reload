@@ -24,12 +24,58 @@ class FileWatcher
         $this->config = $config;
     }
 
-    public function watch(callable $onChange = null, callable $onError = null)
+    public function watch(callable $onChange = null, callable $onError = null, callable $onHeartbeat = null)
     {
         $this->running = true;
         $previous = $this->snapshot($onError);
+        $scanCount = 0;
+        $wasPaused = false;
 
         while ($this->running) {
+            $scanCount++;
+            $heartbeat = $this->signal->writeHeartbeat([
+                'scan_count' => $scanCount,
+                'paused' => $this->signal->isPaused(),
+            ]);
+
+            if ($this->signal->isPaused()) {
+                if (! $wasPaused) {
+                    if ($onError !== null) {
+                        $onError('Watcher paused.');
+                    }
+
+                    $wasPaused = true;
+                }
+
+                if ($onHeartbeat !== null) {
+                    call_user_func($onHeartbeat, [
+                        'scan_count' => $scanCount,
+                        'heartbeat' => $heartbeat,
+                        'state' => 'paused',
+                    ]);
+                }
+
+                $this->sleep($this->scanInterval());
+
+                continue;
+            }
+
+            if ($wasPaused) {
+                if ($onError !== null) {
+                    $onError('Watcher resumed.');
+                }
+
+                $wasPaused = false;
+            }
+
+            if ($onHeartbeat !== null) {
+                call_user_func($onHeartbeat, [
+                    'scan_count' => $scanCount,
+                    'heartbeat' => $heartbeat,
+                    'state' => 'running',
+                ]);
+            }
+
             $this->sleep($this->scanInterval());
 
             $current = $this->snapshot($onError);

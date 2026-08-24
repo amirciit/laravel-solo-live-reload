@@ -49,7 +49,11 @@ class ServeCommand extends Command
         });
 
         if ($this->option('open') || (bool) config('live-reload.auto_open_browser', false)) {
-            $this->openBrowser($url);
+            if ($this->isSafeToAutoOpen($url)) {
+                $this->openBrowser($url);
+            } else {
+                $this->warn('Auto-open skipped for safety: current host is not loopback and live-reload endpoints are restricted.');
+            }
         }
 
         while ($server->isRunning() && $watcher->isRunning()) {
@@ -107,6 +111,23 @@ class ServeCommand extends Command
         }
 
         return false;
+    }
+
+    protected function isSafeToAutoOpen($url)
+    {
+        $host = (string) parse_url($url, PHP_URL_HOST);
+        $safeMode = (bool) (config('live-reload.safe_mode') ?? true);
+        $enforceLoopback = (bool) (config('live-reload.enforce_loopback') ?? true);
+
+        if (live_reload_is_loopback_address($host)) {
+            return true;
+        }
+
+        if ($safeMode || $enforceLoopback) {
+            return false;
+        }
+
+        return trim((string) config('live-reload.access_token', '')) !== '' || trim((string) config('live-reload.route_secret', '')) !== '';
     }
 
     protected function openBrowser($url)

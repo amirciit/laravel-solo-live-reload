@@ -7,6 +7,7 @@ use LaravelSolo\LiveReload\Services\FileWatcher;
 use LaravelSolo\LiveReload\Services\PathFilter;
 use LaravelSolo\LiveReload\Services\ReloadSignal;
 use RuntimeException;
+use Symfony\Component\Process\Process;
 
 class WatchCommand extends Command
 {
@@ -45,6 +46,11 @@ class WatchCommand extends Command
             return self::FAILURE;
         }
 
+        $cleanupTtl = (int) config('live-reload.watcher_stale_ttl_seconds', 75);
+        if ($this->signal->cleanupStaleWatcherState($cleanupTtl)) {
+            $this->line('Removed stale watcher state from an old process.');
+        }
+
         if ($this->option('once')) {
             $count = count($this->watcher->snapshot());
             $this->info('Laravel Solo Live Reload scan completed.');
@@ -73,54 +79,56 @@ class WatchCommand extends Command
         $this->line('URL: ' . $this->option('url'));
         $this->line('Press CTRL+C to stop.');
 
-        $this->watcher->watch(function ($change) {
-            $this->line('Changed: ' . $change['path']);
-            $this->info('Reload signal sent.');
-        }, function ($message) {
-            $this->warn($message);
-        });
+        $healthInterval = 20;
+        $heartbeatCounter = 0;
+
+        try {
+            $this->watcher->watch(function ($change) {
+                $this->line('Changed: ' . $change['path']);
+                $this->info('Reload signal sent.');
+            }, function ($message) {
+                $this->warn($message);
+            }, function ($heartbeat) use (&$heartbeatCounter, $healthInterval) {
+                $heartbeatCounter++;
+
+                if ($heartbeatCounter % $healthInterval !== 0) {
+                    return;
+                }
+
+                $state = $heartbeat['state'] ?? 'unknown';
+                $scanCount = isset($heartbeat['scan_count']) ? (int) $heartbeat['scan_count'] : 0;
+
+                $this->line('[LiveReload] Watcher status: ' . $state . ' (scan ' . $scanCount . ')');
+            });
+        } catch (\Throwable $exception) {
+            $this->error('Watcher crashed: ' . $exception->getMessage());
+            $this->notifyWatcherCrash($exception->getMessage());
+
+            return self::FAILURE;
+        }
 
         return self::SUCCESS;
     }
 
     protected function watcherAlreadyRunning()
     {
-        $pidPath = $this->signal->pidPath();
-
-        if (! is_file($pidPath)) {
+        if (! is_file($this->signal->pidPath())) {
             return false;
         }
 
-        $pid = (int) trim((string) @file_get_contents($pidPath));
+        $pid = $this->signal->watcherPid();
 
-        if ($pid <= 0) {
-            @unlink($pidPath);
+        if (! $pid) {
+            @unlink($this->signal->pidPath());
 
             return false;
         }
 
-        if ($this->processIsRunning($pid)) {
+        if ($this->signal->isWatcherProcessRunning($pid)) {
             return true;
         }
 
-        @unlink($pidPath);
-
-        return false;
-    }
-
-    protected function processIsRunning($pid)
-    {
-        if (function_exists('posix_kill')) {
-            return @posix_kill($pid, 0);
-        }
-
-        if (stripos(PHP_OS_FAMILY, 'Windows') !== false && function_exists('exec')) {
-            $output = [];
-            @exec('tasklist /FI "PID eq ' . (int) $pid . '" /NH', $output);
-            $text = implode("\n", $output);
-
-            return strpos($text, (string) $pid) !== false;
-        }
+        @unlink($this->signal->pidPath());
 
         return false;
     }
@@ -140,5 +148,58 @@ class WatchCommand extends Command
                 @unlink($pidPath);
             }
         });
+    }
+
+    protected function notifyWatcherCrash($message)
+    {
+        $title = 'Laravel Solo Live Reload';
+        $body = 'Watcher crashed: ' . $message;
+
+        if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+            $messageArgument = str_replace("'", "''", $body);
+
+            $process = new Process([
+                'powershell',
+                '-NoProfile',
+                '-Command',
+                "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); [System.Windows.Forms.MessageBox]::Show('$messageArgument', '$title')",
+            ]);
+
+            try {
+                $process->run();
+            } catch (\Throwable $exception) {
+                // Ignore notification failures; logging remains visible in terminal.
+            }
+
+            return;
+        }
+
+        if (PHP_OS_FAMILY === 'Darwin') {
+            $process = new Process([
+                'osascript',
+                '-e',
+                'display notification "' . addslashes($body) . '" with title "' . addslashes($title) . '"',
+            ]);
+
+            try {
+                $process->run();
+            } catch (\Throwable $exception) {
+                // Ignore notification failures; logging remains visible in terminal.
+            }
+
+            return;
+        }
+
+        $process = new Process([
+            'notify-send',
+            $title,
+            $body,
+        ]);
+
+        try {
+            $process->run();
+        } catch (\Throwable $exception) {
+            // Ignore notification failures; logging remains visible in terminal.
+        }
     }
 }

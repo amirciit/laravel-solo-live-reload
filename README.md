@@ -2,7 +2,7 @@
 
 A PHP-only live reload package for Laravel local development.
 
-Laravel Solo Live Reload watches your Laravel files, injects a small browser client into local HTML responses, and reloads the browser when files change. It does not require Node.js, npm, Vite, Webpack, Laravel Mix, BrowserSync, socket.io, or any frontend build tool.
+Laravel Solo Live Reload watches your Laravel files, injects a browser client into local HTML responses, and reloads the browser when files change. It does not require Node.js, npm, Vite, Webpack, Laravel Mix, BrowserSync, socket.io, or any frontend build tool.
 
 ## Why This Package?
 
@@ -26,18 +26,22 @@ This package is designed for simple Laravel development workflows:
 - Browser overlay for connection and reload status
 - Watcher health warning in the browser when the watcher stops
 - Multi-tab sync using `BroadcastChannel` with `localStorage` fallback
-- Optional browser desktop notifications
+- Optional watcher pause and resume commands
+- Watcher restart/stop commands with stale-process protection
+- Optional desktop notifications
 - Local status dashboard
 - Recent change history in status output
+- Watcher heartbeat indicators in terminal and status output
 - Setup diagnostics with `live-reload:doctor`
 - Pipeline self-test with `live-reload:test`
 - Package summary with `live-reload:about`
+- Runtime hardening tooling (`safe-mode`, `token:generate`, `allow`, `deny`)
 - Optional browser auto-open with `--open`
 - Clean terminal output by default
 - Optional raw server logs with `--show-server-logs`
-- Configurable watch paths, extensions, ignored paths, and presets
-- Windows, macOS, and Linux support
-- Laravel 8, 9, 10, 11, and 12 support
+- Configurable watch paths, extensions, ignored paths, presets
+- Optional route hardening with token, host/IP allow-lists, route secret, and loopback enforcement
+- `.gitignore` auto-ignore for watcher patterns and user-defined `ignore_patterns`
 
 ## Requirements
 
@@ -85,13 +89,7 @@ Open:
 http://127.0.0.1:8000
 ```
 
-Now edit a watched file, for example:
-
-```txt
-resources/views/layouts/sidebar.blade.php
-```
-
-The browser reloads automatically.
+The browser reloads automatically when a watched file changes.
 
 ## Common Commands
 
@@ -117,7 +115,7 @@ Starts the server, starts the watcher, and opens your browser automatically.
 php artisan live-reload:serve --host=127.0.0.1 --port=8000 --show-server-logs
 ```
 
-By default, raw `php artisan serve` access logs are hidden because the live reload client polls the server frequently. Use this option only when debugging requests.
+By default, raw `php artisan serve` access logs are hidden because the live reload client polls frequently. Use this option only when debugging requests.
 
 ### Run Watcher Separately
 
@@ -133,13 +131,82 @@ Terminal 2:
 php artisan live-reload:watch
 ```
 
+### Pause / Resume Watcher
+
+```bash
+php artisan live-reload:pause-watch
+php artisan live-reload:resume-watch
+```
+
+### Watcher Stop / Restart
+
+```bash
+php artisan live-reload:watcher-stop
+php artisan live-reload:watcher-stop --force
+php artisan live-reload:watcher-restart --url=http://127.0.0.1:8000
+```
+
+`watcher-stop` stops the running watcher process when stale; use `--force` to stop immediately.
+`watcher-restart` combines stop + watch and is useful in terminal workflows.
+
+### Per-Project Presets
+
+```bash
+php artisan live-reload:preset
+```
+
+Lists available presets and the current active preset.
+
+```bash
+php artisan live-reload:preset blade-only
+```
+
+Applies a preset override locally for this project.
+
+```bash
+php artisan live-reload:preset --clear
+```
+
+Clears the local preset override.
+
+### Safe Mode
+
+```bash
+php artisan live-reload:safe-mode
+```
+
+Enables safe-mode defaults for non-loopback access:
+
+- Keeps loopback/allow-list enforcement on
+- Generates `route_secret` if missing
+- Stores overrides locally
+
+```bash
+php artisan live-reload:safe-mode --off
+```
+
+Disables safe-mode and loopback-only restrictions for this project runtime.
+
+```bash
+php artisan live-reload:allow 127.0.0.1 --scope=ip
+php artisan live-reload:allow example.dev --scope=host
+php artisan live-reload:allow --clear
+php artisan live-reload:deny 127.0.0.1
+
+php artisan live-reload:token:generate
+php artisan live-reload:token:generate --route
+php artisan live-reload:token:generate --route --show-secret
+```
+
+Use `allow`/`deny` to control endpoint access without restarting Laravel. Use `token:generate` to rotate access tokens or route secrets for private tunnels.
+
 ### Status
 
 ```bash
 php artisan live-reload:status
 ```
 
-Shows whether live reload is enabled, watcher state, watched paths, ignored paths, intervals, and the last changed file.
+Shows whether live reload is enabled, watcher state (running/paused), heartbeat age, watch config, and last changes.
 
 ### Doctor
 
@@ -172,7 +239,7 @@ php artisan live-reload:doctor --json
 php artisan live-reload:about
 ```
 
-Shows package name, environment, enabled state, preset, route prefix, status URL, config path, and storage path.
+Shows package metadata, endpoints, route secret/token status, runtime guard flags, endpoint reachability checks, and auto-open safety.
 
 ### Self-Test
 
@@ -180,7 +247,7 @@ Shows package name, environment, enabled state, preset, route prefix, status URL
 php artisan live-reload:test
 ```
 
-Checks the local environment gate, storage writability, route registration, reload signal write/read, and recent change history.
+Checks local environment gating, storage/writes, route registration, reload signal integrity, history recording, loopback behavior, and hardening status.
 
 JSON output:
 
@@ -233,6 +300,15 @@ LIVE_RELOAD_POLL_INTERVAL=800
 LIVE_RELOAD_SCAN_INTERVAL=500
 LIVE_RELOAD_DEBOUNCE_MS=300
 LIVE_RELOAD_RELOAD_DELAY_MS=80
+LIVE_RELOAD_SAFE_MODE=1
+LIVE_RELOAD_ENFORCE_LOOPBACK=1
+LIVE_RELOAD_STRICT_ALLOWLIST=0
+LIVE_RELOAD_ALLOWED_CLIENT_IPS=
+LIVE_RELOAD_ALLOWED_HOSTS=
+LIVE_RELOAD_WATCHER_STALE_TTL_SECONDS=75
+LIVE_RELOAD_ACCESS_TOKEN=
+LIVE_RELOAD_ROUTE_SECRET=
+LIVE_RELOAD_WATCH_ENV_FILE=0
 LIVE_RELOAD_INJECT_ON_ERROR_PAGES=true
 LIVE_RELOAD_STATUS_HISTORY_LIMIT=10
 LIVE_RELOAD_SHOW_SERVER_LOGS=false
@@ -244,6 +320,23 @@ LIVE_RELOAD_OVERLAY=true
 LIVE_RELOAD_OVERLAY_POSITION=bottom-right
 LIVE_RELOAD_OVERLAY_DURATION=2200
 ```
+
+Optional hardening options:
+
+```dotenv
+LIVE_RELOAD_ALLOWED_CLIENT_IPS=127.0.0.1,::1,192.0.2.10
+LIVE_RELOAD_ALLOWED_HOSTS=127.0.0.1,localhost
+LIVE_RELOAD_ACCESS_TOKEN=super-secret-token
+LIVE_RELOAD_ROUTE_SECRET=hidden-route-token
+```
+
+`LIVE_RELOAD_ACCESS_TOKEN` is accepted through:
+- `X-Live-Reload-Token` header
+- `Authorization: Bearer <token>`
+- `?live_reload_token=<token>`
+- `?token=<token>` query param
+
+`LIVE_RELOAD_ROUTE_SECRET` is appended to the route prefix, so actual URLs become `/<prefix>/<route_secret>/...`.
 
 ## Watch Presets
 
@@ -263,38 +356,20 @@ Available presets:
 | `frontend-assets` | Views, CSS, JS, and public assets |
 | `package-development` | Laravel package development |
 
-## Default Watched Paths
+## Ignore Rules
+
+- `ignore_paths` uses path prefixes and still works as before.
+- `ignore_patterns` supports glob patterns (`*`, `?`, `**`) with path-aware matching.
+- `.gitignore` patterns are automatically loaded from your project `.gitignore`.
+
+Example:
 
 ```php
-'watch_paths' => [
-    app_path(),
-    base_path('routes'),
-    resource_path('views'),
-    resource_path('css'),
-    resource_path('js'),
-    public_path(),
-    config_path(),
-    database_path('migrations'),
-    database_path('seeders'),
-    base_path('lang'),
-    base_path('.env'),
-],
-```
-
-## Default Watched Extensions
-
-```php
-'watch_extensions' => [
-    'php',
-    'blade.php',
-    'css',
-    'js',
-    'json',
-    'env',
-    'xml',
-    'yml',
-    'yaml',
-],
+'ignore_patterns' => [
+    '*.log',
+    'storage/logs/**',
+    'public/build/*',
+]
 ```
 
 ## How It Works
@@ -304,7 +379,8 @@ Available presets:
 3. When a file is created, updated, or deleted, it writes a reload signal.
 4. The browser client polls `/__live-reload/version`.
 5. The browser warns if the watcher process stops.
-6. When the version changes, the browser reloads.
+6. When the version changes, the browser reloads or performs CSS-only updates.
+7. Heartbeats are written continuously so status and terminal output can surface watcher health.
 
 Reload signal example:
 
@@ -317,12 +393,18 @@ Reload signal example:
 }
 ```
 
-Runtime files are written under `storage/framework/live-reload`. The package creates a `.gitignore` inside that directory so `reload.json`, `history.json`, and `watcher.pid` are not committed or deployed.
+Runtime files are written under `storage/framework/live-reload`. The package creates a `.gitignore` inside that directory so runtime files are not committed or deployed.
 
 Injected browser client:
 
 ```html
 <script src="http://127.0.0.1:8000/__live-reload/client.js" data-live-reload defer></script>
+```
+
+If a route secret is enabled the URL includes it:
+
+```html
+<script src="http://127.0.0.1:8000/__live-reload/hidden-route-token/client.js" data-live-reload defer></script>
 ```
 
 ## CSS Hot Reload
@@ -360,6 +442,10 @@ This package is intended for local development only.
 - Browser responses expose only relative changed file paths
 - Absolute server paths and sensitive config values are not exposed
 - Runtime state files are written to a git-ignored storage directory
+- Loopback is enforced by default (`LIVE_RELOAD_SAFE_MODE=1` and/or `LIVE_RELOAD_ENFORCE_LOOPBACK=1`)
+- Optional strict allow-list mode: `LIVE_RELOAD_STRICT_ALLOWLIST=1` to deny access when allow-lists are empty or missing
+- Optional token, host/IP allow-lists, and `route_secret` harden endpoint exposure
+- `.env` file watching is disabled by default (`LIVE_RELOAD_WATCH_ENV_FILE=0`) and can be enabled explicitly when needed
 
 ## Troubleshooting
 
@@ -379,7 +465,8 @@ Then check:
 - The watcher is running
 - The changed file is inside `watch_paths`
 - The file extension is inside `watch_extensions`
-- The file path is not inside `ignore_paths`
+- The file path is not inside `ignore_paths` or ignored by `ignore_patterns`
+- Endpoints are reachable for the current host when hardening is enabled
 - `storage/framework/live-reload` is writable
 - The page is a `text/html` response
 
@@ -412,6 +499,21 @@ Raw server access logs are hidden by default. To show them:
 ```bash
 php artisan live-reload:serve --show-server-logs
 ```
+
+## Local-Only Runtime Files
+
+These files are generated at runtime and are excluded from version control by package-managed `.gitignore`:
+
+- `storage/framework/live-reload/reload.json`
+- `storage/framework/live-reload/history.json`
+- `storage/framework/live-reload/watcher.pid`
+- `storage/framework/live-reload/watcher.paused`
+- `storage/framework/live-reload/heartbeat.json`
+- `storage/framework/live-reload/runtime-config.json`
+
+They remain local-only and should not be committed or uploaded to remote repositories/servers.
+
+This keeps all running-state artifacts local to your environment.
 
 ## Testing
 

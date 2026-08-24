@@ -15,6 +15,20 @@ return [
 
     'inject_on_error_pages' => env('LIVE_RELOAD_INJECT_ON_ERROR_PAGES', true),
 
+    'safe_mode' => filter_var((string) env('LIVE_RELOAD_SAFE_MODE', '1'), FILTER_VALIDATE_BOOLEAN),
+
+    'enforce_loopback' => filter_var((string) env('LIVE_RELOAD_ENFORCE_LOOPBACK', '1'), FILTER_VALIDATE_BOOLEAN),
+
+    'strict_allowlist' => filter_var((string) env('LIVE_RELOAD_STRICT_ALLOWLIST', '0'), FILTER_VALIDATE_BOOLEAN),
+
+    'watcher_stale_ttl_seconds' => (int) env('LIVE_RELOAD_WATCHER_STALE_TTL_SECONDS', 75),
+
+    'allowed_client_ips' => array_values(array_filter(preg_split('/[,\s]+/', (string) env('LIVE_RELOAD_ALLOWED_CLIENT_IPS', ''), -1, PREG_SPLIT_NO_EMPTY))),
+
+    'allowed_hosts' => array_values(array_filter(preg_split('/[,\s]+/', (string) env('LIVE_RELOAD_ALLOWED_HOSTS', ''), -1, PREG_SPLIT_NO_EMPTY))),
+
+    'access_token' => env('LIVE_RELOAD_ACCESS_TOKEN', ''),
+
     'status_history_limit' => (int) env('LIVE_RELOAD_STATUS_HISTORY_LIMIT', 10),
 
     'watch_paths' => [
@@ -30,6 +44,8 @@ return [
         base_path('lang'),
         base_path('.env'),
     ],
+
+    'watch_env_file' => filter_var((string) env('LIVE_RELOAD_WATCH_ENV_FILE', '0'), FILTER_VALIDATE_BOOLEAN),
 
     'watch_extensions' => [
         'php',
@@ -57,7 +73,11 @@ return [
         base_path('.env.backup'),
     ],
 
+    'ignore_patterns' => [],
+
     'route_prefix' => '__live-reload',
+
+    'route_secret' => env('LIVE_RELOAD_ROUTE_SECRET', ''),
 
     'inject_script' => true,
 

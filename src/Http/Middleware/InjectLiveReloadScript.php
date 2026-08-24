@@ -44,6 +44,10 @@ class InjectLiveReloadScript
             return false;
         }
 
+        if (! live_reload_request_is_allowed($request)) {
+            return false;
+        }
+
         if (! $response instanceof Response) {
             return false;
         }
@@ -79,8 +83,9 @@ class InjectLiveReloadScript
 
     protected function scriptTag()
     {
-        $prefix = trim((string) config('live-reload.route_prefix', '__live-reload'), '/');
+        $prefix = live_reload_effective_route_prefix();
         $src = url('/' . $prefix . '/client.js');
+        $src .= live_reload_client_token_query();
 
         return '<script src="' . e($src) . '" data-live-reload defer></script>';
     }

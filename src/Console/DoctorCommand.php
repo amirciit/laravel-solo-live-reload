@@ -69,6 +69,16 @@ class DoctorCommand extends Command
     protected function checks(array $report)
     {
         $checks = [];
+        $resolved = ConfigResolver::resolve(config('live-reload', []));
+        $allowedClientIps = isset($resolved['allowed_client_ips']) ? (array) $resolved['allowed_client_ips'] : [];
+        $allowedHosts = isset($resolved['allowed_hosts']) ? (array) $resolved['allowed_hosts'] : [];
+        $hasAllowList = count($allowedClientIps) > 0 || count($allowedHosts) > 0;
+        $strictAllowlist = (bool) ($resolved['strict_allowlist'] ?? false);
+        $safeMode = (bool) ($resolved['safe_mode'] ?? false);
+        $enforceLoopback = (bool) ($resolved['enforce_loopback'] ?? false);
+        $token = trim((string) ($resolved['access_token'] ?? ''));
+        $routeSecret = trim((string) ($resolved['route_secret'] ?? ''));
+        $hasHardening = $safeMode || $enforceLoopback || $token !== '' || $routeSecret !== '' || $hasAllowList;
 
         $checks[] = $this->check(
             'Environment',
@@ -128,6 +138,30 @@ class DoctorCommand extends Command
                 ? 'The watcher process is currently running.'
                 : 'Start it with php artisan live-reload:watch or live-reload:serve.'
         );
+
+        $checks[] = $this->check(
+            'Route hardening',
+            $hasHardening ? 'pass' : 'fail',
+            $hasHardening
+                ? 'At least one hardening control is enabled for endpoint access.'
+                : 'Enable safe mode or loopback enforcement, or set token/route secret or allow-list.'
+        );
+
+        $checks[] = $this->check(
+            'Strict allow-list mode',
+            $strictAllowlist ? 'pass' : 'warn',
+            $strictAllowlist
+                ? 'Strict allow-list mode is enabled.'
+                : 'Strict allow-list mode is not enabled.'
+        );
+
+        if (! $hasHardening) {
+            $checks[] = $this->check(
+                'Insecure endpoint posture',
+                'fail',
+                'safe_mode and enforce_loopback are disabled with no route secret/token/allow-list.'
+            );
+        }
 
         $checks[] = $this->check(
             'CSS hot reload',

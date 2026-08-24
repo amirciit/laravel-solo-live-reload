@@ -9,8 +9,17 @@ use LaravelSolo\LiveReload\Console\AboutCommand;
 use LaravelSolo\LiveReload\Console\ClearCommand;
 use LaravelSolo\LiveReload\Console\DoctorCommand;
 use LaravelSolo\LiveReload\Console\InstallCommand;
+use LaravelSolo\LiveReload\Console\AllowCommand;
+use LaravelSolo\LiveReload\Console\PauseWatchCommand;
+use LaravelSolo\LiveReload\Console\DenyCommand;
+use LaravelSolo\LiveReload\Console\PresetCommand;
+use LaravelSolo\LiveReload\Console\GenerateSecretCommand;
+use LaravelSolo\LiveReload\Console\ResumeWatchCommand;
 use LaravelSolo\LiveReload\Console\ServeCommand;
+use LaravelSolo\LiveReload\Console\SafeModeCommand;
 use LaravelSolo\LiveReload\Console\StatusCommand;
+use LaravelSolo\LiveReload\Console\WatcherRestartCommand;
+use LaravelSolo\LiveReload\Console\WatcherStopCommand;
 use LaravelSolo\LiveReload\Console\TestCommand;
 use LaravelSolo\LiveReload\Console\WatchCommand;
 use LaravelSolo\LiveReload\Http\Middleware\InjectLiveReloadScript;
@@ -34,10 +43,12 @@ class LiveReloadServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(FileWatcher::class, function ($app) {
+            $config = ConfigResolver::resolve($app['config']->get('live-reload', []));
+
             return new FileWatcher(
                 $app->make(PathFilter::class),
                 $app->make(ReloadSignal::class),
-                ConfigResolver::resolve($app['config']->get('live-reload', []))
+                $config
             );
         });
     }
@@ -58,8 +69,17 @@ class LiveReloadServiceProvider extends ServiceProvider
                 StatusCommand::class,
                 ClearCommand::class,
                 DoctorCommand::class,
+                PauseWatchCommand::class,
+                ResumeWatchCommand::class,
+                PresetCommand::class,
+                SafeModeCommand::class,
                 AboutCommand::class,
                 TestCommand::class,
+                AllowCommand::class,
+                DenyCommand::class,
+                GenerateSecretCommand::class,
+                WatcherStopCommand::class,
+                WatcherRestartCommand::class,
             ]);
         }
 

@@ -4,6 +4,7 @@ namespace LaravelSolo\LiveReload\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Route;
+use LaravelSolo\LiveReload\Services\ConfigResolver;
 use LaravelSolo\LiveReload\Services\ReloadSignal;
 use RuntimeException;
 
@@ -111,6 +112,59 @@ class TestCommand extends Command
                 ? 'Recent change history is recording signals.'
                 : 'Reload works, but recent change history was not recorded.'
         );
+
+        $resolved = ConfigResolver::resolve(config('live-reload', []));
+
+        $checks[] = $this->check(
+            'Environment file watch',
+            $resolved['watch_env_file'] ? 'warn' : 'pass',
+            $resolved['watch_env_file']
+                ? 'watch_env_file is enabled. Consider disabling it for strict secret handling.'
+                : 'watch_env_file is disabled.'
+        );
+
+        $checks[] = $this->check(
+            'Loopback enforcement',
+            ($resolved['safe_mode'] || $resolved['enforce_loopback']) ? 'pass' : 'warn',
+            ($resolved['safe_mode'] || $resolved['enforce_loopback'])
+                ? 'Loopback-only access is enforced.'
+                : 'Loopback-only enforcement is disabled.'
+        );
+
+        $hardeningEnabled = trim((string) ($resolved['access_token'] ?? '')) !== '' || trim((string) ($resolved['route_secret'] ?? '')) !== '';
+        $checks[] = $this->check(
+            'Route hardening',
+            $hardeningEnabled ? 'pass' : 'warn',
+            $hardeningEnabled
+                ? 'Access token or route secret is enabled.'
+                : 'No access token and no route secret are configured.'
+        );
+
+        $allowedClientIps = isset($resolved['allowed_client_ips']) ? (array) $resolved['allowed_client_ips'] : [];
+        $allowedHosts = isset($resolved['allowed_hosts']) ? (array) $resolved['allowed_hosts'] : [];
+        $hasAllowList = count($allowedClientIps) > 0 || count($allowedHosts) > 0;
+
+        if ($hasAllowList) {
+            $checks[] = $this->check(
+                'Allow-list hardening',
+                'pass',
+                'Client allow-lists are configured.'
+            );
+        } else {
+            $checks[] = $this->check(
+                'Allow-list hardening',
+                'warn',
+                'No allow-lists are configured.'
+            );
+        }
+
+        if ((! $resolved['safe_mode']) && (! $resolved['enforce_loopback']) && ! $hardeningEnabled && ! $hasAllowList) {
+            $checks[] = $this->check(
+                'Insecure endpoint posture',
+                'fail',
+                'safe_mode/enforce_loopback are disabled with no token, route secret, or allow-lists.'
+            );
+        }
 
         return $checks;
     }

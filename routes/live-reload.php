@@ -3,7 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use LaravelSolo\LiveReload\Http\Controllers\LiveReloadController;
 
-$prefix = trim((string) config('live-reload.route_prefix', '__live-reload'), '/');
+$prefix = live_reload_effective_route_prefix();
 
 Route::prefix($prefix)
     ->name('live-reload.')
