@@ -12,7 +12,7 @@ if (! function_exists('live_reload_effective_config')) {
 }
 
 if (! function_exists('live_reload_enabled')) {
-    function live_reload_enabled(Application $app = null)
+    function live_reload_enabled(?Application $app = null)
     {
         $app = $app ?: app();
 
@@ -25,7 +25,7 @@ if (! function_exists('live_reload_enabled')) {
 }
 
 if (! function_exists('live_reload_injection_enabled')) {
-    function live_reload_injection_enabled(Application $app = null)
+    function live_reload_injection_enabled(?Application $app = null)
     {
         $app = $app ?: app();
 

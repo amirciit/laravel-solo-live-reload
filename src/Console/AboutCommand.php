@@ -26,7 +26,7 @@ class AboutCommand extends Command
         $host = (string) parse_url(config('app.url'), PHP_URL_HOST);
         $isLoopback = live_reload_is_loopback_address($host);
         $autoOpenSafe = $isLoopback
-            || (! ($report['safe_mode'] || $report['loopback_only']) && (($report['access_token_set'] || $report['route_secret_set']));
+            || (! ($report['safe_mode'] || $report['loopback_only']) && ($report['access_token_set'] || $report['route_secret_set']));
 
         $endpointChecks = [
             'Version endpoint' => $this->checkEndpoint($report['route_version_url']),

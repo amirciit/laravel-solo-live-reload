@@ -24,7 +24,7 @@ class FileWatcher
         $this->config = $config;
     }
 
-    public function watch(callable $onChange = null, callable $onError = null, callable $onHeartbeat = null)
+    public function watch(?callable $onChange = null, ?callable $onError = null, ?callable $onHeartbeat = null)
     {
         $this->running = true;
         $previous = $this->snapshot($onError);
@@ -109,7 +109,7 @@ class FileWatcher
         $this->running = false;
     }
 
-    public function snapshot(callable $onError = null)
+    public function snapshot(?callable $onError = null)
     {
         $snapshot = [];
 
@@ -165,7 +165,7 @@ class FileWatcher
         }));
     }
 
-    protected function scanPath($path, array &$snapshot, callable $onError = null)
+    protected function scanPath($path, array &$snapshot, ?callable $onError = null)
     {
         if (! file_exists($path)) {
             return;
@@ -217,7 +217,7 @@ class FileWatcher
         }
     }
 
-    protected function addFileToSnapshot($path, array &$snapshot, callable $onError = null)
+    protected function addFileToSnapshot($path, array &$snapshot, ?callable $onError = null)
     {
         if (! $this->filter->shouldWatch($path)) {
             return;
@@ -265,7 +265,7 @@ class FileWatcher
         return array_values($changes)[0];
     }
 
-    protected function reportError(callable $onError = null, $message = '')
+    protected function reportError(?callable $onError = null, $message = '')
     {
         if ($onError !== null) {
             call_user_func($onError, $message);
